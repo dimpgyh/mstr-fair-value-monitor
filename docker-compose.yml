@@ -1,0 +1,18 @@
+services:
+  mstr-monitor:
+    build: .
+    container_name: mstr-fair-value-monitor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Jakarta
+      - DATA_DIR=/app/data
+      - REFRESH_INTERVAL_SECONDS=3600
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
