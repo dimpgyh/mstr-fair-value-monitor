@@ -27,6 +27,56 @@ with sync_playwright() as p:
     assert page.locator("#sensitivity-table tbody tr").count() == 5
     assert page.locator("#source-rows tr").count() == 8
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    # Slider is a local what-if: no writes, no source/history mutation.
+    live = page.request.get(URL + "/api/valuation").json()
+    initial_nav = page.locator("#nav").inner_text()
+    initial_market = page.locator("#btc-price").inner_text()
+    initial_sources = page.locator("#source-rows").inner_text()
+    initial_history = page.locator("#history-caption").inner_text()
+    writes = []
+    page.on(
+        "request", lambda req: writes.append(req.url) if req.method == "POST" else None
+    )
+    page.locator("#btc-slider").focus()
+    page.keyboard.press("End")
+    page.wait_for_function(
+        "document.querySelector('#simulation-status').textContent === 'SIMULASI AKTIF'"
+    )
+    high_nav = page.locator("#nav").inner_text()
+    assert high_nav != initial_nav
+    high_scenario = page.locator(".scenario.base .scenario-value").inner_text()
+    page.keyboard.press("Home")
+    page.wait_for_function(
+        "document.querySelector('#btc-assumption').textContent === '$10,000'"
+    )
+    assert page.locator("#nav").inner_text() != high_nav
+    assert page.locator(".scenario.base .scenario-value").inner_text() != high_scenario
+    assert page.locator("#btc-price").inner_text() == initial_market
+    assert page.locator("#source-rows").inner_text() == initial_sources
+    assert page.locator("#history-caption").inner_text() == initial_history
+    page.evaluate("poll()")
+    page.wait_for_function("document.querySelector('#btc-slider').value === '10000'")
+    assert page.locator("#simulation-status").inner_text() == "SIMULASI AKTIF"
+    page.get_by_role("button", name="Harga pasar", exact=False).click()
+    assert page.locator("#nav").inner_text() == initial_nav
+    assert page.locator("#simulation-status").inner_text() == "HARGA PASAR"
+    # A pointer drag must update the value before mouse release.
+    track = page.locator("#btc-slider").bounding_box()
+    page.mouse.move(track["x"] + track["width"] * 0.4, track["y"] + track["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(
+        track["x"] + track["width"] * 0.7, track["y"] + track["height"] / 2, steps=8
+    )
+    page.wait_for_function(
+        "document.querySelector('#simulation-status').textContent === 'SIMULASI AKTIF'"
+    )
+    assert page.locator("#nav").inner_text() != initial_nav
+    page.mouse.up()
+    page.get_by_role("button", name="Harga pasar", exact=False).click()
+    assert not writes
+    assert len(page.request.get(URL + "/api/valuation").json()["hourly_logs"]) == len(
+        live["hourly_logs"]
+    )
     page.get_by_role("button", name="Parameter").click()
     page.locator('input[name="preferred_stock"]').fill("14")
     assert (
@@ -83,6 +133,6 @@ with sync_playwright() as p:
     assert not errors, errors
     browser.close()
 print(
-    "PASS: live data render; desktop/mobile overflow; evidence invalidation; snapshot load; invalid/valid conversion save; cache error and empty states. Screenshots:",
+    "PASS: instant BTC slider/drag, reset, polling persistence, no saved simulations; live data render; desktop/mobile overflow; evidence invalidation; snapshot load; invalid/valid conversion save; cache error and empty states. Screenshots:",
     OUT,
 )

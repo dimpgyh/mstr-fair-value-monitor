@@ -55,7 +55,9 @@ const labels = {
 let current = null,
   working = null,
   busy = false,
-  dialogReturn = null;
+  dialogReturn = null,
+  assumedBTC = null,
+  simulationFrame = null;
 function message(text, error = false) {
   $("notice").textContent = text;
   $("notice").classList.toggle("error", error);
@@ -76,10 +78,13 @@ async function request(url, options) {
 function quoteTime(q) {
   return `${q.source} · ${dateTime(q.observed_at)}${q.stale ? " · KEDALUWARSA" : ""}`;
 }
-function render(data) {
+function render(data, localOnly = false) {
   current = data;
-  disconnected = false;
-  const v = data.valuation;
+  if (!localOnly) disconnected = false;
+  const v =
+    data.valuation && assumedBTC !== null
+      ? simulateValuation(data.valuation, assumedBTC)
+      : data.valuation;
   $("empty").hidden = !!v;
   $("dashboard").hidden = !v;
   if (!v) {
@@ -91,6 +96,7 @@ function render(data) {
     tick();
     return;
   }
+  renderSlider(data.valuation);
   const c = v.config,
     b = v.backing,
     m = v.market;
@@ -160,11 +166,11 @@ function render(data) {
     `Ekuitas ${billion(c.new_equity_usd)} · utang ${billion(c.new_debt_usd)} · preferred ${billion(c.new_preferred_usd)}. Biaya tahunan model ${billion(base.annual_carry_usd)}.${base.funding_gap_usd ? " Kekurangan kas " + billion(base.funding_gap_usd) + "." : ""} Tanpa pendanaan baru, dampak tambahan = nol.`;
   $("sensitivity-table").innerHTML =
     `<thead><tr><th>BTC / multiple →</th>${v.sensitivity.multiples.map((x) => `<th>${number(x, 2)}×</th>`).join("")}</tr></thead><tbody>${v.sensitivity.rows.map((r) => `<tr><th>${money(r.btc_price, 0)}<br>${pct(r.change_pct)}</th>${r.cells.map((x) => `<td class="${x < m.mstr.price ? "down" : ""}">${money(x, 0)}</td>`).join("")}</tr>`).join("")}</tbody>`;
-  renderSources(v.evidence, m);
+  if (!localOnly) renderSources(v.evidence, data.valuation.market);
   $("warnings").innerHTML = v.warnings
     .map((w) => `<li>${esc(w)}</li>`)
     .join("");
-  renderHistory(data.hourly_logs, data.legacy_snapshot_count);
+  if (!localOnly) renderHistory(data.hourly_logs, data.legacy_snapshot_count);
   tick();
 }
 function renderSourcesFromConfig(c) {
@@ -234,7 +240,7 @@ function renderHistory(rows, legacy) {
         )
         .join(" ");
     $("history-chart").innerHTML =
-      `<svg viewBox="0 0 520 160" role="img" aria-label="Harga MSTR dan nilai aset bersih dari observasi tersimpan"><path d="M40 20H500M40 77H500M40 135H500" stroke="#e5eade" fill="none"/><text x="0" y="25" font-size="9" fill="#70807b">${money(max, 0)}</text><text x="0" y="138" font-size="9" fill="#70807b">${money(min, 0)}</text><path d="${path((p) => p.market.mstr.price)}" stroke="#8c9d92" stroke-width="2" fill="none"/><path d="${path((p) => p.backing.net_asset_per_share)}" stroke="#456e52" stroke-width="2.5" fill="none"/></svg>`;
+      `<svg viewBox="0 0 520 160" role="img" aria-label="Harga MSTR dan nilai aset bersih dari observasi tersimpan"><path d="M40 20H500M40 77H500M40 135H500" stroke="#eee6dc" fill="none"/><text x="0" y="25" font-size="9" fill="#79716a">${money(max, 0)}</text><text x="0" y="138" font-size="9" fill="#79716a">${money(min, 0)}</text><path d="${path((p) => p.market.mstr.price)}" stroke="#77716a" stroke-width="2" fill="none"/><path d="${path((p) => p.backing.net_asset_per_share)}" stroke="#e88117" stroke-width="2.5" fill="none"/></svg>`;
   }
   $("history-caption").textContent =
     `${shown.length} observasi sebanding · ${shown.length ? dateTime(shown[0].timestamp_utc) + " — " + dateTime(shown.at(-1).timestamp_utc) : "menunggu data"}. ${configSet.size > 1 ? "Grafik difilter ke parameter terbaru. " : ""}${legacy ? `${legacy} snapshot model lama tetap diarsipkan di database. ` : ""}Tidak ada rekonstruksi masa lalu.`;
@@ -258,7 +264,7 @@ function tick() {
         ? `Refresh berikutnya ${Math.floor(left / 60)} mnt ${left % 60} dtk`
         : "Menunggu jadwal";
   $("status-dot").style.background =
-    s.last_error || overdue || disconnected ? "#bc7c40" : "#528363";
+    s.last_error || overdue || disconnected ? "#bc7c40" : "#d47814";
   $("last-refresh").textContent =
     `Observasi terakhir ${dateTime(s.last_refresh_utc)} · setiap ${number(s.refresh_interval_seconds / 3600, 2)} jam`;
   if (overdue && latest && !s.last_error)
@@ -454,3 +460,52 @@ async function poll() {
 poll();
 setInterval(poll, 30000);
 setInterval(tick, 1000);
+
+function renderSlider(observation) {
+  const market = observation.market.btc.price;
+  const price = assumedBTC ?? market;
+  const active = assumedBTC !== null;
+  const min = Math.min(10000, Math.max(1, Math.floor(market / 2)));
+  const max = Math.max(300000, Math.ceil(market * 2), Math.ceil(price));
+  $("btc-slider").min = min;
+  $("btc-slider").max = max;
+  $("btc-slider").value = price;
+  $("btc-slider").style.setProperty(
+    "--progress",
+    `${((price - min) / (max - min)) * 100}%`,
+  );
+  $("btc-slider").setAttribute(
+    "aria-valuetext",
+    `${money(price, 0)}${active ? " simulasi" : " harga pasar"}`,
+  );
+  $("btc-assumption").textContent = money(price, 0);
+  $("btc-assumption-change").textContent = active
+    ? `${pct((price / market - 1) * 100)} dari harga pasar`
+    : "Mengikuti harga pasar terakhir";
+  $("btc-market-anchor").textContent = `Pasar: ${money(market, 0)}`;
+  $("btc-min-label").textContent = money(min, 0);
+  $("btc-max-label").textContent = money(max, 0);
+  $("simulation-status").textContent = active
+    ? "SIMULASI AKTIF"
+    : "HARGA PASAR";
+  $("reset-btc").disabled = !active;
+  $("backing-label").textContent = active
+    ? "01 / ACUAN ASET SIMULASI"
+    : "01 / ACUAN ASET HARI INI";
+  $("backing-pill").textContent = active ? "SIMULASI" : "INDIKATIF";
+  document.body.classList.toggle("simulating", active);
+}
+$("btc-slider").addEventListener("input", (event) => {
+  assumedBTC = Number(event.target.value);
+  if (simulationFrame !== null) cancelAnimationFrame(simulationFrame);
+  simulationFrame = requestAnimationFrame(() => {
+    simulationFrame = null;
+    if (current) render(current, true);
+  });
+});
+$("reset-btc").addEventListener("click", () => {
+  if (simulationFrame !== null) cancelAnimationFrame(simulationFrame);
+  simulationFrame = null;
+  assumedBTC = null;
+  if (current) render(current, true);
+});

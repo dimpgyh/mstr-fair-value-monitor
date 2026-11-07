@@ -22,6 +22,12 @@ The optional reviewed snapshot was manually transcribed from [Strategy's dashboa
 
 Existing installations retain their old capital inputs with **unverified evidence** and unset annual carry (zero, with a warning). Use **Parameter → Muat snapshot resmi 7 Nov → Simpan** to deliberately apply the reviewed snapshot. It is never silently substituted for existing settings.
 
+## Interactive Bitcoin price lab
+
+The Bitcoin-orange dashboard includes a keyboard-accessible BTC price slider. Dragging recalculates asset backing, conversion values, financing scenarios and sensitivity immediately in the browser using the current observation’s saved assumptions. BTC at the simulated starting date also becomes the purchase price for modeled new funding; scenario percentage changes apply from that starting price. MSTR market price remains fixed.
+
+Simulation is local to the open page, survives background polling, and is cleared by **Harga pasar** or a page reload. It never updates shared settings or stored observations. Quote cards, the source ledger and historical charts continue to show actual observed data. Twelve cross-language cases check the browser calculations against the canonical Python model, including funding, conversion and negative net assets.
+
 ## History and evaluation
 
 V2 observations are stored in a separate `snapshots_v2` table with the complete input configuration, source metadata, market timestamps and model version. Legacy tables and V1 snapshots remain intact. The chart uses only captured V2 observations with the same configuration as the latest observation. There is no backward reconstruction with today's holdings. V2 retention is three years by timestamp.
