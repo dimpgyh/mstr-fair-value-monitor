@@ -3,190 +3,126 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-
+from app.config import Settings, default_settings
 from app.database import (
-    DEFAULT_CONFIG,
     get_config,
     get_latest_snapshot_payload,
     get_recent_snapshots,
     init_db,
+    legacy_count,
     save_snapshot,
     update_config,
 )
 from app.valuation_engine import compute_full_valuation
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger("mstr_monitor.main")
-
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("mstr_monitor")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-
-# In-memory state for fast serving & scheduler status
-STATE: Dict[str, Any] = {
+STATE = {
     "latest_valuation": None,
     "last_refresh_utc": None,
     "next_refresh_utc": None,
-    "refresh_interval_seconds": 3600,
-    "refresh_count": 0,
     "is_refreshing": False,
     "last_error": None,
+    "refresh_count": 0,
 }
+LOCK = asyncio.Lock()
+WAKE = asyncio.Event()
 
-REFRESH_LOCK = asyncio.Lock()
+
+def next_refresh():
+    STATE["next_refresh_utc"] = (
+        datetime.now(timezone.utc)
+        + timedelta(seconds=get_config()["refresh_interval_seconds"])
+    ).isoformat()
 
 
-async def perform_refresh(reason: str = "scheduled") -> Dict[str, Any]:
-    """Run the valuation calculation in a thread pool and persist snapshot."""
-    async with REFRESH_LOCK:
+async def perform_refresh():
+    async with LOCK:
         STATE["is_refreshing"] = True
         try:
-            logger.info("Executing MSTR fair value refresh (reason=%s)...", reason)
             valuation = await asyncio.to_thread(compute_full_valuation)
             await asyncio.to_thread(save_snapshot, valuation)
-
-            now_utc = datetime.now(timezone.utc)
-            cfg = valuation.get("config", get_config())
-            interval_sec = int(cfg.get("refresh_interval_seconds", 3600))
-            next_utc = now_utc + timedelta(seconds=interval_sec)
-
-            STATE["latest_valuation"] = valuation
-            STATE["last_refresh_utc"] = now_utc.isoformat()
-            STATE["next_refresh_utc"] = next_utc.isoformat()
-            STATE["refresh_interval_seconds"] = interval_sec
-            STATE["refresh_count"] += 1
-            STATE["last_error"] = None
-            logger.info(
-                "Refresh #%d complete: MSTR=$%.2f, BTC=$%.2f, Composite Fair Value=$%.2f (%s)",
-                STATE["refresh_count"],
-                valuation["market"]["mstr_price"],
-                valuation["market"]["btc_price"],
-                valuation["composite"]["fair_value"],
-                valuation["composite"]["verdict_code"],
+            STATE.update(
+                latest_valuation=valuation,
+                last_refresh_utc=valuation["timestamp_utc"],
+                last_error=None,
+                refresh_count=STATE["refresh_count"] + 1,
             )
-            return valuation
         except Exception as exc:
-            logger.exception("Error during MSTR valuation refresh: %s", exc)
+            logger.exception("Refresh failed; retaining previous observation")
             STATE["last_error"] = str(exc)
             raise
         finally:
             STATE["is_refreshing"] = False
+            next_refresh()
+            WAKE.set()
 
 
-async def hourly_scheduler_loop() -> None:
-    """Background loop that triggers perform_refresh every refresh_interval_seconds (default 1 hour)."""
+async def hourly_scheduler_loop():
     while True:
+        WAKE.clear()
+        target = datetime.fromisoformat(STATE["next_refresh_utc"])
+        delay = max(0, (target - datetime.now(timezone.utc)).total_seconds())
         try:
-            interval = int(STATE.get("refresh_interval_seconds") or 3600)
-            interval = max(60, interval)
-            await asyncio.sleep(interval)
-            await perform_refresh(reason="hourly_timer")
-        except asyncio.CancelledError:
-            logger.info("Hourly scheduler loop cancelled.")
-            break
-        except Exception as exc:
-            logger.error("Hourly scheduler loop encountered error: %s", exc)
-            await asyncio.sleep(60)
+            await asyncio.wait_for(WAKE.wait(), timeout=delay)
+            continue
+        except asyncio.TimeoutError:
+            pass
+        try:
+            await perform_refresh()
+        except Exception:
+            pass  # Error exposed in API; retry at the next scheduled interval.
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app):
     init_db()
-    # Load cached snapshot first if available
     cached = get_latest_snapshot_payload()
-    if cached:
-        STATE["latest_valuation"] = cached
-        STATE["last_refresh_utc"] = cached.get("timestamp_utc")
+    STATE.update(
+        latest_valuation=cached,
+        last_refresh_utc=cached["timestamp_utc"] if cached else None,
+    )
+    next_refresh()
 
-    # Run immediate live refresh on startup
-    try:
-        await perform_refresh(reason="startup")
-    except Exception as exc:
-        logger.warning("Initial startup refresh failed, using cached/fallback state: %s", exc)
-
-    scheduler_task = asyncio.create_task(hourly_scheduler_loop())
-    try:
-        yield
-    finally:
-        scheduler_task.cancel()
+    async def startup_refresh():
         try:
-            await scheduler_task
-        except asyncio.CancelledError:
+            await perform_refresh()
+        except Exception:
             pass
 
+    initial = asyncio.create_task(startup_refresh())
+    scheduler = asyncio.create_task(hourly_scheduler_loop())
+    yield
+    for task in (initial, scheduler):
+        task.cancel()
+    await asyncio.gather(initial, scheduler, return_exceptions=True)
 
-app = FastAPI(
-    title="MSTR Fair Value Monitor",
-    description="Real-Time & Hourly MSTR Multi-Model Composite Fair Value Monitor",
-    version="1.0.0",
-    lifespan=lifespan,
-)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_Methods=["*"],
-    allow_headers=["*"],
-) if False else None
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-os.makedirs(STATIC_DIR, exist_ok=True)
+app = FastAPI(title="MSTR Observatory", version="2.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-class ConfigUpdateRequest(BaseModel):
-    btc_holdings: Optional[float] = None
-    btc_avg_cost: Optional[float] = None
-    basic_shares: Optional[float] = None
-    diluted_shares: Optional[float] = None
-    total_debt: Optional[float] = None
-    preferred_stock: Optional[float] = None
-    cash_and_equivalents: Optional[float] = None
-    software_ev: Optional[float] = None
-    target_basic_mnav: Optional[float] = None
-    target_ev_mnav: Optional[float] = None
-    annual_btc_yield_pct: Optional[float] = None
-    discount_rate_pct: Optional[float] = None
-    yield_horizon_years: Optional[float] = None
-    optionality_premium_pct: Optional[float] = None
-    auto_sync_fundamentals: Optional[bool] = None
-    refresh_interval_seconds: Optional[int] = None
-    weights: Optional[Dict[str, float]] = None
+@app.middleware("http")
+async def protect_browser_writes(request: Request, call_next):
+    # Public reads remain available. Cross-site browser writes are rejected.
+    if request.method in ("POST", "PUT", "DELETE"):
+        from urllib.parse import urlsplit
 
+        origin = request.headers.get("origin")
+        if origin and urlsplit(origin).netloc != request.headers.get("host"):
+            from fastapi.responses import JSONResponse
 
-def _build_scheduler_meta() -> Dict[str, Any]:
-    now_utc = datetime.now(timezone.utc)
-    next_str = STATE.get("next_refresh_utc")
-    sec_remaining = STATE.get("refresh_interval_seconds", 3600)
-    if next_str:
-        try:
-            next_dt = datetime.fromisoformat(next_str)
-            sec_remaining = max(0, int((next_dt - now_utc).total_seconds()))
-        except Exception:
-            pass
-    return {
-        "last_refresh_utc": STATE.get("last_refresh_utc"),
-        "next_refresh_utc": STATE.get("next_refresh_utc"),
-        "seconds_until_next_refresh": sec_remaining,
-        "refresh_interval_seconds": STATE.get("refresh_interval_seconds", 3600),
-        "refresh_count": STATE.get("refresh_count", 0),
-        "is_refreshing": STATE.get("is_refreshing", False),
-        "last_error": STATE.get("last_error"),
-    }
+            return JSONResponse(
+                {"detail": "Cross-origin writes are not allowed"}, status_code=403
+            )
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 
 
 @app.get("/")
@@ -194,78 +130,75 @@ async def index():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
+def scheduler_meta():
+    return {k: v for k, v in STATE.items() if k != "latest_valuation"} | {
+        "refresh_interval_seconds": get_config()["refresh_interval_seconds"]
+    }
+
+
 @app.get("/health")
 async def health():
+    latest = STATE["latest_valuation"]
+    aged = not latest or (
+        datetime.now(timezone.utc) - datetime.fromisoformat(latest["timestamp_utc"])
+    ).total_seconds() > max(7200, get_config()["refresh_interval_seconds"] * 2)
     return {
-        "status": "ok",
+        "status": "degraded"
+        if STATE["last_error"] or aged or latest.get("quality") == "stale"
+        else "ok",
         "service": "mstr-fair-value-monitor",
-        "scheduler": _build_scheduler_meta(),
+        "scheduler": scheduler_meta(),
     }
 
 
 @app.get("/api/valuation")
-async def api_get_valuation():
-    if not STATE["latest_valuation"]:
-        await perform_refresh(reason="on_demand_init")
-    snapshots = await asyncio.to_thread(get_recent_snapshots, 168)
-    return JSONResponse(
-        {
-            "valuation": STATE["latest_valuation"],
-            "scheduler": _build_scheduler_meta(),
-            "hourly_logs": snapshots,
-        }
-    )
+async def valuation():
+    return {
+        "valuation": STATE["latest_valuation"],
+        "scheduler": scheduler_meta(),
+        "hourly_logs": get_recent_snapshots(),
+        "legacy_snapshot_count": legacy_count(),
+        "config": get_config(),
+    }
 
 
 @app.post("/api/refresh")
-async def api_trigger_refresh():
+async def refresh():
+    if STATE["is_refreshing"]:
+        raise HTTPException(409, "Refresh is already running")
     try:
-        valuation = await perform_refresh(reason="manual_user_trigger")
-        snapshots = await asyncio.to_thread(get_recent_snapshots, 168)
-        return JSONResponse(
-            {
-                "status": "refreshed",
-                "valuation": valuation,
-                "scheduler": _build_scheduler_meta(),
-                "hourly_logs": snapshots,
-            }
-        )
+        await perform_refresh()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Gagal melakukan refresh data: {exc}")
+        raise HTTPException(503, str(exc)) from exc
+    return await valuation()
 
 
 @app.post("/api/config")
-async def api_update_config(payload: ConfigUpdateRequest):
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-    await asyncio.to_thread(update_config, updates)
-    valuation = await perform_refresh(reason="config_updated")
-    snapshots = await asyncio.to_thread(get_recent_snapshots, 168)
-    return JSONResponse(
-        {
-            "status": "updated",
-            "valuation": valuation,
-            "scheduler": _build_scheduler_meta(),
-            "hourly_logs": snapshots,
-        }
-    )
+async def configure(payload: Settings):
+    if STATE["is_refreshing"]:
+        raise HTTPException(
+            409, "Wait for the active refresh before changing assumptions"
+        )
+    # Only mark a configuration saved; market refresh failure does not imply save failure.
+    update_config(payload.model_dump(mode="json"))
+    try:
+        await perform_refresh()
+    except Exception:
+        pass
+    return await valuation()
 
 
-@app.post("/api/config/reset")
-async def api_reset_config():
-    await asyncio.to_thread(update_config, dict(DEFAULT_CONFIG))
-    valuation = await perform_refresh(reason="config_reset")
-    snapshots = await asyncio.to_thread(get_recent_snapshots, 168)
-    return JSONResponse(
-        {
-            "status": "reset",
-            "valuation": valuation,
-            "scheduler": _build_scheduler_meta(),
-            "hourly_logs": snapshots,
-        }
-    )
+@app.get("/api/config/reviewed")
+async def reviewed_config():
+    return default_settings()
 
 
 @app.get("/api/history")
-async def api_get_history(limit: int = 168):
-    snapshots = await asyncio.to_thread(get_recent_snapshots, limit)
-    return JSONResponse({"count": len(snapshots), "snapshots": snapshots})
+async def history(limit: int = Query(default=168, ge=1, le=8760)):
+    rows = get_recent_snapshots(limit)
+    return {
+        "count": len(rows),
+        "model_version": "2.0",
+        "snapshots": rows,
+        "legacy_snapshot_count": legacy_count(),
+    }

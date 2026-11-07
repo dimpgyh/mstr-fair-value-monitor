@@ -1,1147 +1,251 @@
-<!DOCTYPE html>
-<html lang="id" class="dark">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MSTR Fair Value Monitor — Multi-Model Valuation Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            btc: '#F7931A',
-            mstr: '#D92D20',
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      background-color: #090D16;
-      color: #F1F5F9;
-    }
-    .glass-card {
-      background: rgba(17, 24, 39, 0.82);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: rgba(15, 23, 42, 0.6);
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: rgba(100, 116, 139, 0.5);
-      border-radius: 3px;
-    }
-  </style>
-</head>
-<body class="min-h-screen antialiased selection:bg-orange-500 selection:text-white">
-
-  <!-- Top Navbar -->
-  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#090D16]/90 backdrop-blur-md">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-500/20 font-mono font-bold text-lg text-white">
-          ₿
-        </div>
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101919" />
+    <title>MSTR Observatory · Fair Value Monitor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#"
+        ><span class="brandmark">m<span>↗</span></span
+        ><span>MSTR<span class="brand-sub">OBSERVATORY</span></span></a
+      >
+      <nav aria-label="Navigasi utama">
+        <a href="#overview" class="active">Overview</a
+        ><a href="#scenarios">Skenario</a><a href="#sources">Sumber data</a>
+      </nav>
+      <span class="market-tag">NASDAQ <b>MSTR</b></span>
+    </header>
+    <main>
+      <div class="page-heading" id="overview">
         <div>
-          <div class="flex items-center gap-2.5">
-            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">MSTR Fair Value Monitor</h1>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold uppercase tracking-wider rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30">
-              NASDAQ: MSTR
-            </span>
+          <div class="eyebrow">BITCOIN TREASURY INTELLIGENCE</div>
+          <h1>Asetnya nyata.<br /><span>Valuasinya perlu konteks.</span></h1>
+          <p>
+            Nilai aset bersih, struktur modal, dan skenario MSTR dalam satu
+            pandangan.
+          </p>
+        </div>
+        <div class="heading-actions">
+          <div class="status">
+            <i id="status-dot"></i><span id="schedule">Memuat jadwal…</span>
           </div>
-          <p class="text-xs text-slate-400">Kombinasi 7 Model Valuasi (mNAV, EV-Adjusted, BTC Yield DCF, Regresi OLS, Konsensus Analis & Neraca FASB)</p>
+          <div class="button-row">
+            <button id="settings-button" class="button secondary">
+              Parameter <span>↗</span></button
+            ><button id="refresh-button" class="button primary">
+              ↻ &nbsp; Refresh data
+            </button>
+          </div>
+          <small id="last-refresh">Refresh otomatis setiap 1 jam</small>
         </div>
       </div>
-
-      <!-- Status & Action Controls -->
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
-          <span class="relative flex h-2.5 w-2.5">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <span class="text-slate-300 font-medium">Auto-Refresh 1 Jam:</span>
-          <span id="countdown-timer" class="font-mono font-semibold text-emerald-400">--:--</span>
-        </div>
-
-        <div class="hidden md:flex items-center gap-1.5 text-xs text-slate-400 px-2.5 py-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
-          <span>Update Terakhir:</span>
-          <span id="last-updated-text" class="font-mono text-slate-200">Memuat...</span>
-        </div>
-
-        <button onclick="triggerManualRefresh()" id="btn-refresh" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-500/20 transition cursor-pointer">
-          <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span id="btn-refresh-text">Refresh Sekarang</span>
-        </button>
-
-        <button onclick="openSettingsModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer">
-          <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span>Parameter & Bobot</span>
-        </button>
+      <div id="notice" class="notice" role="status" aria-live="polite">
+        Menghubungkan sumber data…
       </div>
-    </div>
-  </header>
-
-  <!-- Main Content Container -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-
-    <!-- Verdict Banner -->
-    <div id="verdict-banner" class="glass-card rounded-2xl p-5 border-l-4 border-l-emerald-500 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-      <div class="space-y-1">
-        <div class="flex flex-wrap items-center gap-2.5">
-          <span class="text-xs font-mono uppercase tracking-wider text-slate-400">Kesimpulan Valuasi Multi-Model:</span>
-          <span id="verdict-badge" class="px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-            MEMUAT...
-          </span>
-        </div>
-        <p id="verdict-summary" class="text-sm sm:text-base text-slate-200 font-medium">
-          Sedang menghitung nilai wajar gabungan dari 7 model valuasi MSTR...
+      <div id="empty" class="empty" hidden>
+        <h2>Belum ada observasi pasar.</h2>
+        <p>
+          Harga pengganti tidak digunakan. Parameter tetap bisa diperiksa sambil
+          menunggu sumber tersedia.
         </p>
       </div>
-
-      <div class="flex flex-wrap items-center gap-4 sm:gap-6 bg-slate-950/60 px-4 py-3 rounded-xl border border-slate-800/80">
-        <div>
-          <div class="text-[11px] text-slate-400 uppercase font-mono">Bear Case (Floor)</div>
-          <div id="val-bear-case" class="text-sm sm:text-base font-mono font-bold text-rose-400">$--</div>
-        </div>
-        <div class="h-7 w-px bg-slate-800"></div>
-        <div>
-          <div class="text-[11px] text-orange-400 uppercase font-mono font-semibold">Composite Fair Value</div>
-          <div id="val-composite-inline" class="text-base sm:text-lg font-mono font-extrabold text-white">$--</div>
-        </div>
-        <div class="h-7 w-px bg-slate-800"></div>
-        <div>
-          <div class="text-[11px] text-slate-400 uppercase font-mono">Median Model</div>
-          <div id="val-median-inline" class="text-sm sm:text-base font-mono font-bold text-sky-400">$--</div>
-        </div>
-        <div class="h-7 w-px bg-slate-800"></div>
-        <div>
-          <div class="text-[11px] text-slate-400 uppercase font-mono">Bull Case</div>
-          <div id="val-bull-case" class="text-sm sm:text-base font-mono font-bold text-emerald-400">$--</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4 Key Hero Metric Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Card 1: MSTR Price -->
-      <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Harga Saham MSTR</span>
-            <span id="mstr-change-badge" class="px-2 py-0.5 rounded text-xs font-mono font-semibold bg-slate-800 text-slate-300">--%</span>
-          </div>
-          <div class="mt-2 flex items-baseline gap-2">
-            <span id="hero-mstr-price" class="text-3xl font-mono font-extrabold text-white">$--</span>
-            <span class="text-xs text-slate-400 font-mono">USD</span>
-          </div>
-          <div class="mt-1 text-xs text-slate-400">
-            Prev Close: <span id="mstr-prev-close" class="font-mono text-slate-300">$--</span>
-          </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/80 space-y-1.5">
-          <div class="flex justify-between text-[11px] font-mono text-slate-400">
-            <span>52W Low: <strong id="mstr-52w-low" class="text-slate-300">$--</strong></span>
-            <span>52W High: <strong id="mstr-52w-high" class="text-slate-300">$--</strong></span>
-          </div>
-          <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div id="mstr-52w-bar" class="h-full bg-gradient-to-r from-orange-500 to-emerald-400 rounded-full" style="width: 50%"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 2: Composite Fair Value -->
-      <div class="glass-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden border-orange-500/30">
-        <div class="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/10 rounded-full blur-xl pointer-events-none"></div>
-        <div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-orange-400">Nilai Wajar Gabungan</span>
-            <span id="hero-upside-badge" class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300">--%</span>
-          </div>
-          <div class="mt-2 flex items-baseline gap-2">
-            <span id="hero-composite-fv" class="text-3xl font-mono font-extrabold text-white">$--</span>
-            <span class="text-xs text-slate-400 font-mono">Fair Value</span>
-          </div>
-          <div class="mt-1 text-xs text-slate-400">
-            Trimmed Mean: <span id="hero-trimmed-fv" class="font-mono text-slate-200">$--</span>
-          </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-          <span class="text-slate-400">Rasio Price / Fair Value:</span>
-          <span id="hero-p-to-fv" class="font-mono font-bold text-slate-200">--x</span>
-        </div>
-      </div>
-
-      <!-- Card 3: Bitcoin Price & Treasury -->
-      <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">Harga Bitcoin & Treasury</span>
-            <span id="btc-change-badge" class="px-2 py-0.5 rounded text-xs font-mono font-semibold bg-slate-800 text-slate-300">--%</span>
-          </div>
-          <div class="mt-2 flex items-baseline gap-2">
-            <span id="hero-btc-price" class="text-3xl font-mono font-extrabold text-amber-400">$--</span>
-            <span class="text-xs text-slate-400 font-mono">BTC-USD</span>
-          </div>
-          <div class="mt-1 text-xs text-slate-400">
-            Kepemilikan: <span id="hero-btc-holdings" class="font-mono font-semibold text-slate-200">-- BTC</span>
-            (<span id="hero-btc-supply-pct" class="font-mono text-amber-400">--%</span> suplai)
-          </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-          <span class="text-slate-400">Nilai Treasury BTC:</span>
-          <span id="hero-btc-treasury-val" class="font-mono font-bold text-emerald-400">$--B</span>
-        </div>
-      </div>
-
-      <!-- Card 4: mNAV Multiples & Sats per Share -->
-      <div class="glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Multiple mNAV Saat Ini</span>
-            <span id="mnav-target-badge" class="px-2 py-0.5 rounded text-[11px] font-mono bg-sky-500/15 text-sky-300">Target: --x</span>
-          </div>
-          <div class="mt-2 flex items-baseline gap-3">
-            <div>
-              <span id="hero-basic-mnav" class="text-3xl font-mono font-extrabold text-white">--x</span>
-              <span class="text-[11px] text-slate-400 block">Basic mNAV</span>
+      <div id="dashboard" hidden>
+        <section class="hero-grid" aria-label="Ringkasan valuasi">
+          <article class="card hero-card">
+            <div class="section-label">
+              01 / ACUAN ASET HARI INI <span class="pill">INDIKATIF</span>
             </div>
-            <div class="h-8 w-px bg-slate-800"></div>
-            <div>
-              <span id="hero-ev-mnav" class="text-xl font-mono font-bold text-sky-400">--x</span>
-              <span class="text-[11px] text-slate-400 block">EV mNAV</span>
+            <div class="hero-value" id="nav">—</div>
+            <div class="hero-unit">nilai aset bersih per saham biasa</div>
+            <div class="comparison">
+              <span>Harga pasar MSTR <strong id="mstr-price">—</strong></span
+              ><span class="comparison-change" id="nav-gap">—</span>
             </div>
-          </div>
-        </div>
-        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-          <span class="text-slate-400">Satoshi / Saham:</span>
-          <span id="hero-sats-per-share" class="font-mono font-bold text-amber-400">-- sats</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Section 1: Breakdown 7 Model Valuasi + Bar Chart -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Table of 7 Valuation Models -->
-      <div class="lg:col-span-7 glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <div>
-              <h2 class="text-base sm:text-lg font-bold text-white">Rincian 7 Model Valuasi MSTR (Multi-Metric Breakdown)</h2>
-              <p class="text-xs text-slate-400">Setiap metrik dihitung secara real-time dan digabungkan sesuai bobot portofolio valuasi</p>
+            <div class="value-track"><div id="value-marker"></div></div>
+            <div class="track-labels">
+              <span>Harga pasar</span><span>Acuan aset bersih</span>
             </div>
-            <span class="px-2.5 py-1 rounded-md text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
-              Total Bobot: 100%
-            </span>
+            <p class="hero-note">
+              Setelah kas, utang dan preferred stock. Bukan batas bawah harga
+              atau jaminan nilai likuidasi.
+            </p>
+          </article>
+          <article class="card bridge-card">
+            <div class="section-label">DARI TREASURY KE SAHAM BIASA</div>
+            <div id="bridge"></div>
+            <div class="bridge-total">
+              <span>Aset bersih model</span><strong id="net-total">—</strong>
+            </div>
+            <p class="muted">
+              Nilai bisnis software dan kewajiban bersih lainnya merupakan
+              asumsi yang dapat diubah.
+            </p>
+          </article>
+        </section>
+        <section class="metrics-grid" aria-label="Indikator pasar">
+          <article class="card metric">
+            <div class="metric-label">BITCOIN <span>BTC / USD</span></div>
+            <strong id="btc-price">—</strong><small id="btc-time">—</small>
+          </article>
+          <article class="card metric">
+            <div class="metric-label">TREASURY <span>BTC</span></div>
+            <strong id="holdings">—</strong><small id="holdings-note">—</small>
+          </article>
+          <article class="card metric">
+            <div class="metric-label">MULTIPLE ASET <span>CUSTOM</span></div>
+            <strong id="multiple">—</strong
+            ><small>(EV − software + kewajiban lain) / BTC</small>
+          </article>
+          <article class="card metric">
+            <div class="metric-label">
+              SETELAH KONVERSI <span>WHAT-IF</span>
+            </div>
+            <strong id="converted-nav">—</strong
+            ><small>Klaim dilepas, saham ditambah</small>
+          </article>
+        </section>
+        <section id="scenarios">
+          <div class="section-heading">
+            <div>
+              <div class="eyebrow">02 / KEMUNGKINAN, BUKAN KEPASTIAN</div>
+              <h2>Tiga skenario. Asumsi terbuka.</h2>
+            </div>
+            <span class="outline-tag">Horizon 12 bulan · nilai kini</span>
           </div>
-
-          <div class="overflow-x-auto custom-scrollbar">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="border-b border-slate-800 text-[11px] font-mono uppercase text-slate-400">
-                  <th class="py-2.5 pr-3">Model Valuasi & Formula</th>
-                  <th class="py-2.5 px-2 text-right">Fair Value</th>
-                  <th class="py-2.5 px-2 text-right">Upside/Downside</th>
-                  <th class="py-2.5 px-2 text-right">Bobot</th>
-                  <th class="py-2.5 pl-2 text-right">Kontribusi</th>
-                </tr>
-              </thead>
-              <tbody id="models-table-body" class="divide-y divide-slate-800/60 text-xs sm:text-sm">
-                <!-- Populated by JS -->
-              </tbody>
-              <tfoot>
-                <tr class="border-t-2 border-slate-700 bg-slate-900/70 font-mono font-bold text-white">
-                  <td class="py-3 pr-3">NILAI WAJAR GABUNGAN (COMPOSITE FAIR VALUE)</td>
-                  <td id="tfoot-composite-fv" class="py-3 px-2 text-right text-orange-400 text-base">$--</td>
-                  <td id="tfoot-composite-upside" class="py-3 px-2 text-right">--%</td>
-                  <td class="py-3 px-2 text-right text-slate-300">100%</td>
-                  <td id="tfoot-composite-contrib" class="py-3 pl-2 text-right text-orange-400">$--</td>
-                </tr>
-              </tfoot>
-            </table>
+          <div id="scenario-cards" class="scenario-grid"></div>
+          <p class="section-note">
+            Pendanaan diasumsikan terjadi hari ini; hasil bersih dipakai membeli
+            BTC. Biaya satu tahun dibayar dari kas. Nilai terminal didiskontokan
+            satu kali. Premi merupakan asumsi, bukan hasil prediksi.
+          </p>
+        </section>
+        <section class="two-columns">
+          <article class="card">
+            <div class="section-label">DAMPAK PENDANAAN</div>
+            <h3>Lebih banyak BTC ≠ lebih kaya per saham.</h3>
+            <p class="muted">
+              Perubahan aset bersih per saham pada akhir 12 bulan dibanding
+              skenario yang sama tanpa pendanaan baru.
+            </p>
+            <div id="funding"></div>
+            <p class="muted" id="funding-note"></p>
+          </article>
+          <article class="card">
+            <div class="section-label">03 / RIWAYAT OBSERVASI</div>
+            <div class="chart-heading">
+              <h3>Pasar & acuan aset</h3>
+              <span class="legend"><i></i> MSTR <i></i> Aset bersih</span>
+            </div>
+            <div id="history-chart" class="history-chart"></div>
+            <p id="history-caption" class="muted"></p>
+          </article>
+        </section>
+        <section class="card sensitivity">
+          <div class="section-heading">
+            <div>
+              <div class="section-label">UJI KETAHANAN ASUMSI</div>
+              <h3>Bagaimana jika BTC dan premi berubah?</h3>
+            </div>
+            <span class="muted">Nilai kini / saham · 12 bulan</span>
           </div>
-        </div>
+          <div class="table-scroll"><table id="sensitivity-table"></table></div>
+          <p class="muted">
+            Multiple diterapkan pada aset BTC bruto; klaim senior tetap
+            dikurangi. Termasuk asumsi pendanaan, biaya dan konversi yang aktif.
+          </p>
+        </section>
       </div>
-
-      <!-- Visual Chart comparing the 7 Models vs Current Price -->
-      <div class="lg:col-span-5 glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <h2 class="text-base sm:text-lg font-bold text-white">Perbandingan Visual 7 Model vs Harga Pasar</h2>
-          <p class="text-xs text-slate-400 mb-4">Perbandingan langsung antara harga saham MSTR saat ini dan ke-7 metrik valuasi</p>
-        </div>
-        <div class="relative h-80 w-full">
-          <canvas id="modelsBarChart"></canvas>
-        </div>
-        <div class="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-2 text-center text-xs">
-          <div class="bg-slate-900/70 p-2 rounded-lg border border-slate-800">
-            <span class="text-slate-400 block text-[11px]">1.0x BTC NAV Murni</span>
-            <span id="stat-pure-nav" class="font-mono font-bold text-slate-200">$--</span>
-          </div>
-          <div class="bg-slate-900/70 p-2 rounded-lg border border-slate-800">
-            <span class="text-slate-400 block text-[11px]">Implied BTC di MSTR</span>
-            <span id="stat-implied-btc" class="font-mono font-bold text-amber-400">$--</span>
-          </div>
-          <div class="bg-slate-900/70 p-2 rounded-lg border border-slate-800">
-            <span class="text-slate-400 block text-[11px]">BTC / 1.000 Saham</span>
-            <span id="stat-btc-per-1k" class="font-mono font-bold text-emerald-400">-- BTC</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Section 2: 90-Day Historical Charts (Price vs Fair Value & Historical mNAV) -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Chart 1: 90-Day MSTR Price vs Composite Fair Value & 1.0x NAV -->
-      <div class="glass-card rounded-2xl p-5">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <section id="sources" class="card sources">
+        <div class="section-heading">
           <div>
-            <h2 class="text-base sm:text-lg font-bold text-white">Tren Historis 90 Hari: Harga MSTR vs Fair Value & 1.0x NAV</h2>
-            <p class="text-xs text-slate-400">Melacak deviasi harga pasar MSTR terhadap nilai wajar gabungan dan lantai likuidasi 1.0x BTC NAV</p>
+            <div class="eyebrow">04 / JEJAK DATA</div>
+            <h2>Angka yang bisa ditelusuri.</h2>
           </div>
+          <a
+            class="text-link"
+            href="https://www.strategy.com/notes"
+            target="_blank"
+            rel="noopener"
+            >Metodologi Strategy ↗</a
+          >
         </div>
-        <div class="relative h-72 w-full">
-          <canvas id="historyPriceChart"></canvas>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Input</th>
+                <th>Nilai</th>
+                <th>Status</th>
+                <th>Tanggal sumber</th>
+                <th>Asal & catatan</th>
+              </tr>
+            </thead>
+            <tbody id="source-rows"></tbody>
+          </table>
         </div>
-      </div>
-
-      <!-- Chart 2: 90-Day mNAV Multiple Tracker -->
-      <div class="glass-card rounded-2xl p-5">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <details>
+          <summary>Catatan model & keterbatasan</summary>
+          <ul id="warnings"></ul>
+          <p>
+            Nilai aset bersih adalah acuan model, bukan nilai buku GAAP atau
+            mNAV resmi Strategy. Pajak, kewajiban operasi, perubahan modal dan
+            biaya eksekusi belum dimodelkan sepenuhnya. Tidak ada rata-rata
+            berbobot dengan regresi atau target analis, dan tidak ada sinyal
+            beli otomatis.
+          </p>
+        </details>
+      </section>
+      <footer>
+        <span class="footer-brand">MSTR OBSERVATORY <b>02</b></span
+        ><span>Diobservasi per jam. Dibaca dengan konteks.</span
+        ><a
+          href="https://github.com/dimpgyh/mstr-fair-value-monitor"
+          target="_blank"
+          rel="noopener"
+          >GitHub ↗</a
+        >
+      </footer>
+    </main>
+    <dialog id="settings-dialog">
+      <form id="settings-form">
+        <div class="dialog-header">
           <div>
-            <h2 class="text-base sm:text-lg font-bold text-white">Tren Historis 90 Hari: Multiple Basic mNAV MSTR</h2>
-            <p class="text-xs text-slate-400">Rasio Kapitalisasi Pasar MSTR terhadap Nilai Treasury Bitcoin (Mean 90H: <span id="label-avg-90d-mnav" class="font-mono text-sky-400 font-semibold">--x</span>)</p>
+            <div class="eyebrow">MODEL WORKSPACE</div>
+            <h2>Parameter & asumsi</h2>
           </div>
-          <div class="flex items-center gap-2 text-xs font-mono">
-            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Min: <strong id="label-min-90d-mnav">--x</strong></span>
-            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Max: <strong id="label-max-90d-mnav">--x</strong></span>
-          </div>
-        </div>
-        <div class="relative h-72 w-full">
-          <canvas id="historyMnavChart"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <!-- Section 3: Sensitivity Matrix Heatmap (BTC Price vs mNAV Multiple) -->
-    <div class="glass-card rounded-2xl p-5">
-      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <div>
-          <h2 class="text-base sm:text-lg font-bold text-white">Matriks Sensitivitas Harga Saham MSTR (Harga Bitcoin × Multiple mNAV)</h2>
-          <p class="text-xs text-slate-400">Simulasi nilai wajar per saham MSTR pada berbagai skenario harga Bitcoin dan ekspansi/kontraksi premi mNAV</p>
-        </div>
-        <div class="flex items-center gap-3 text-xs">
-          <span class="inline-flex items-center gap-1.5 text-emerald-400"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500/30 border border-emerald-500"></span> Di atas harga saat ini (Upside)</span>
-          <span class="inline-flex items-center gap-1.5 text-rose-400"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500/30 border border-rose-500"></span> Di bawah harga saat ini (Downside)</span>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto custom-scrollbar">
-        <table class="w-full text-center border-collapse font-mono text-xs">
-          <thead id="sensitivity-thead">
-            <!-- Populated by JS -->
-          </thead>
-          <tbody id="sensitivity-tbody" class="divide-y divide-slate-800/70">
-            <!-- Populated by JS -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Section 4: Balance Sheet, Quant/Technicals & Hourly VPS Snapshots -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Balance Sheet & Quantitative Stats -->
-      <div class="lg:col-span-5 space-y-6">
-        <!-- Balance Sheet Card -->
-        <div class="glass-card rounded-2xl p-5">
-          <h3 class="text-base font-bold text-white mb-3">Struktur Neraca, Saham & Treasury BTC</h3>
-          <div class="grid grid-cols-2 gap-3 text-xs">
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Market Cap (Basic)</span>
-              <span id="bs-mcap-basic" class="font-mono font-bold text-sm text-white">$--B</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Enterprise Value (EV)</span>
-              <span id="bs-ev" class="font-mono font-bold text-sm text-white">$--B</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Basic Shares Beredar</span>
-              <span id="bs-basic-shares" class="font-mono font-bold text-sm text-slate-200">-- Juta</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Diluted Shares</span>
-              <span id="bs-diluted-shares" class="font-mono font-bold text-sm text-slate-200">-- Juta</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Total Debt (Convertibles)</span>
-              <span id="bs-total-debt" class="font-mono font-bold text-sm text-rose-400">$--B</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Rasio Utang / BTC NAV</span>
-              <span id="bs-debt-ratio" class="font-mono font-bold text-sm text-emerald-400">--%</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Avg Harga Beli BTC</span>
-              <span id="bs-btc-avg-cost" class="font-mono font-bold text-sm text-amber-400">$--</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Unrealized PnL BTC</span>
-              <span id="bs-btc-pnl" class="font-mono font-bold text-sm text-emerald-400">$--B</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quant & Technical Indicators Card -->
-        <div class="glass-card rounded-2xl p-5">
-          <h3 class="text-base font-bold text-white mb-3">Indikator Kuantitatif & Teknikal (90-Hari)</h3>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Korelasi BTC (R²)</span>
-              <span id="qt-r2" class="font-mono font-bold text-sm text-sky-400">--</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Z-Score Regresi</span>
-              <span id="qt-zscore" class="font-mono font-bold text-sm text-white">--σ</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">RSI (14-Hari)</span>
-              <span id="qt-rsi" class="font-mono font-bold text-sm text-white">--</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">SMA 50 / SMA 200</span>
-              <span id="qt-sma" class="font-mono font-bold text-xs text-slate-200">$-- / $--</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Volatilitas 30H MSTR</span>
-              <span id="qt-mstr-vol" class="font-mono font-bold text-sm text-orange-400">--%</span>
-            </div>
-            <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
-              <span class="text-slate-400 block">Amplifikasi Vol vs BTC</span>
-              <span id="qt-vol-mult" class="font-mono font-bold text-sm text-amber-400">--x</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Hourly VPS Snapshot Log Table -->
-      <div class="lg:col-span-7 glass-card rounded-2xl p-5 flex flex-col justify-between">
-        <div>
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <div>
-              <h3 class="text-base sm:text-lg font-bold text-white">Riwayat Pemantauan Otomatis VPS (Log Tiap 1 Jam)</h3>
-              <p class="text-xs text-slate-400">Data disimpan otomatis ke database lokal SQLite setiap 1 jam oleh scheduler latar belakang</p>
-            </div>
-            <span id="snapshot-count-badge" class="px-2.5 py-1 rounded-md text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
-              0 Snapshot
-            </span>
-          </div>
-
-          <div class="overflow-x-auto max-h-96 custom-scrollbar">
-            <table class="w-full text-left border-collapse text-xs font-mono">
-              <thead class="sticky top-0 bg-slate-900/95 border-b border-slate-800 text-slate-400 uppercase text-[11px]">
-                <tr>
-                  <th class="py-2.5 px-3">Waktu (WIB)</th>
-                  <th class="py-2.5 px-2 text-right">MSTR</th>
-                  <th class="py-2.5 px-2 text-right">BTC-USD</th>
-                  <th class="py-2.5 px-2 text-right">Composite FV</th>
-                  <th class="py-2.5 px-2 text-right">Selisih</th>
-                  <th class="py-2.5 px-2 text-right">mNAV</th>
-                  <th class="py-2.5 px-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody id="hourly-logs-tbody" class="divide-y divide-slate-800/60">
-                <!-- Populated by JS -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- Settings Modal (Adjust Parameters & Weights) -->
-  <div id="settings-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="glass-card rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 border border-slate-700 shadow-2xl space-y-5">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div>
-          <h3 class="text-lg font-bold text-white">Pengaturan Parameter Treasury & Bobot 7 Model Valuasi</h3>
-          <p class="text-xs text-slate-400">Sesuaikan kepemilikan BTC MSTR, target mNAV, asumsi BTC Yield, dan bobot masing-masing model</p>
-        </div>
-        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white p-1 cursor-pointer">✕</button>
-      </div>
-
-      <form id="settings-form" onsubmit="saveSettings(event)" class="space-y-5 text-xs">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Total Kepemilikan BTC MSTR</label>
-            <input type="number" step="any" id="cfg-btc-holdings" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Harga Beli Rata-Rata BTC ($)</label>
-            <input type="number" step="any" id="cfg-btc-avg-cost" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Target Basic mNAV Multiplier (x)</label>
-            <input type="number" step="0.05" id="cfg-target-basic-mnav" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Target EV-Adjusted mNAV (x)</label>
-            <input type="number" step="0.05" id="cfg-target-ev-mnav" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Asumsi Pertumbuhan BTC Yield (%/Tahun)</label>
-            <input type="number" step="0.5" id="cfg-btc-yield" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-          <div>
-            <label class="block text-slate-300 font-medium mb-1">Interval Auto-Refresh (Detik, 3600 = 1 Jam)</label>
-            <input type="number" step="60" min="60" id="cfg-refresh-interval" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" required />
-          </div>
-        </div>
-
-        <div class="border-t border-slate-800 pt-4">
-          <h4 class="font-bold text-slate-200 mb-3">Bobot Kombinasi 7 Model Valuasi (%)</h4>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-slate-400 mb-1">1. Target Basic mNAV (%)</label>
-              <input type="number" step="1" id="w-target-mnav" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">2. EV Debt & Dilution-Adjusted (%)</label>
-              <input type="number" step="1" id="w-ev-adjusted-mnav" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">3. BTC Yield Accretion DCF (%)</label>
-              <input type="number" step="1" id="w-btc-yield-dcf" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">4. Regresi Statistik OLS 90-Hari (%)</label>
-              <input type="number" step="1" id="w-ols-regression" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">5. Konsensus Analis Wall Street (%)</label>
-              <input type="number" step="1" id="w-analyst-consensus" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">6. Neraca FASB MTM + Optionality (%)</label>
-              <input type="number" step="1" id="w-balance-sheet-mtm" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-            <div>
-              <label class="block text-slate-400 mb-1">7. 1.0x Basic NAV Floor (%)</label>
-              <input type="number" step="1" id="w-basic-nav-floor" class="w-full px-3 py-1.5 rounded bg-slate-900 border border-slate-700 text-white font-mono" />
-            </div>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-between pt-4 border-t border-slate-800">
-          <button type="button" onclick="resetSettingsToDefault()" class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-semibold cursor-pointer">
-            Reset ke Default
+          <button
+            type="button"
+            id="close-settings"
+            class="icon-button"
+            aria-label="Tutup parameter"
+          >
+            ×
           </button>
-          <div class="flex items-center gap-2">
-            <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer">
-              Batal
-            </button>
-            <button type="submit" class="px-5 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-semibold shadow-lg shadow-orange-500/25 cursor-pointer">
-              Simpan & Hitung Ulang
-            </button>
-          </div>
         </div>
+        <p class="muted">
+          Angka disimpan untuk seluruh dashboard. Perubahan input faktual
+          membatalkan catatan sumber lamanya; isi kembali sumber yang sesuai.
+        </p>
+        <div id="fields"></div>
+        <div id="form-error" class="form-error" role="alert"></div>
+        <div class="dialog-footer">
+          <button type="button" id="reviewed-button" class="button secondary">
+            Muat snapshot resmi 7 Nov</button
+          ><button type="submit" class="button primary" id="save-button">
+            Simpan & hitung ulang
+          </button>
+        </div>
+        <p class="muted">
+          Snapshot 7 Nov 2026 disalin manual dari dashboard Strategy, bukan feed
+          laporan otomatis. Jumlah saham merupakan estimasi dari market cap /
+          harga. Tombol muat hanya mengisi formulir; simpan untuk menerapkan.
+        </p>
       </form>
-    </div>
-  </div>
-
-  <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-slate-500 border-t border-slate-900">
-    MSTR Fair Value Monitor • Berjalan Otomatis Setiap 1 Jam di VPS • Data Pasar Real-Time dari Yahoo Finance & Coinbase Spot
-  </footer>
-
-  <script>
-    let latestState = null;
-    let secondsRemaining = 3600;
-    let modelsBarChartInstance = null;
-    let historyPriceChartInstance = null;
-    let historyMnavChartInstance = null;
-
-    const fmtUSD = (val, decimals = 2) => {
-      if (val === undefined || val === null || isNaN(val)) return '$--';
-      return '$' + Number(val).toLocaleString('en-US', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      });
-    };
-
-    const fmtNum = (val, decimals = 0) => {
-      if (val === undefined || val === null || isNaN(val)) return '--';
-      return Number(val).toLocaleString('en-US', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      });
-    };
-
-    const fmtWIB = (isoStr) => {
-      if (!isoStr) return '--';
-      try {
-        const dt = new Date(isoStr);
-        return dt.toLocaleString('id-ID', {
-          timeZone: 'Asia/Jakarta',
-          day: '2-digit',
-          month: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }) + ' WIB';
-      } catch (e) {
-        return isoStr;
-      }
-    };
-
-    function updateCountdownDisplay() {
-      const el = document.getElementById('countdown-timer');
-      if (secondsRemaining <= 0) {
-        el.textContent = 'Memperbarui...';
-        fetchValuationData();
-        secondsRemaining = 60;
-        return;
-      }
-      const mins = Math.floor(secondsRemaining / 60);
-      const secs = secondsRemaining % 60;
-      el.textContent = `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}d`;
-      secondsRemaining -= 1;
-    }
-
-    setInterval(updateCountdownDisplay, 1000);
-
-    async function fetchValuationData() {
-      try {
-        const res = await fetch('/api/valuation');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        latestState = data;
-        renderDashboard(data);
-      } catch (err) {
-        console.error('Failed to load valuation data:', err);
-      }
-    }
-
-    async function triggerManualRefresh() {
-      const btn = document.getElementById('btn-refresh');
-      const txt = document.getElementById('btn-refresh-text');
-      const icon = document.getElementById('refresh-icon');
-      btn.disabled = true;
-      txt.textContent = 'Menghitung...';
-      icon.classList.add('animate-spin');
-      try {
-        const res = await fetch('/api/refresh', { method: 'POST' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        latestState = data;
-        renderDashboard(data);
-      } catch (err) {
-        alert('Gagal melakukan refresh: ' + err.message);
-      } finally {
-        btn.disabled = false;
-        txt.textContent = 'Refresh Sekarang';
-        icon.classList.remove('animate-spin');
-      }
-    }
-
-    function renderDashboard(payload) {
-      const v = payload.valuation;
-      const sched = payload.scheduler;
-      const logs = payload.hourly_logs || [];
-      if (!v) return;
-
-      secondsRemaining = sched.seconds_until_next_refresh || 3600;
-      document.getElementById('last-updated-text').textContent = fmtWIB(v.timestamp_utc);
-
-      // Verdict Banner
-      const comp = v.composite;
-      const banner = document.getElementById('verdict-banner');
-      const badge = document.getElementById('verdict-badge');
-      badge.textContent = comp.verdict_label;
-      document.getElementById('verdict-summary').textContent = comp.verdict_summary;
-
-      const colorMap = {
-        emerald: { border: 'border-l-emerald-500', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
-        green: { border: 'border-l-green-500', badge: 'bg-green-500/20 text-green-300 border-green-500/40' },
-        blue: { border: 'border-l-sky-500', badge: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
-        amber: { border: 'border-l-amber-500', badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-        rose: { border: 'border-l-rose-500', badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
-      };
-      const cTheme = colorMap[comp.verdict_color] || colorMap.blue;
-      banner.className = `glass-card rounded-2xl p-5 border-l-4 ${cTheme.border} flex flex-col lg:flex-row lg:items-center justify-between gap-4`;
-      badge.className = `px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ${cTheme.badge}`;
-
-      document.getElementById('val-bear-case').textContent = fmtUSD(comp.bear_case);
-      document.getElementById('val-composite-inline').textContent = fmtUSD(comp.fair_value);
-      document.getElementById('val-median-inline').textContent = fmtUSD(comp.median_fair_value);
-      document.getElementById('val-bull-case').textContent = fmtUSD(comp.bull_case);
-
-      // Hero Card 1: MSTR
-      const mkt = v.market;
-      document.getElementById('hero-mstr-price').textContent = fmtUSD(mkt.mstr_price);
-      document.getElementById('mstr-prev-close').textContent = fmtUSD(mkt.mstr_prev_close);
-      document.getElementById('mstr-52w-low').textContent = fmtUSD(mkt.mstr_52w_low, 0);
-      document.getElementById('mstr-52w-high').textContent = fmtUSD(mkt.mstr_52w_high, 0);
-
-      const mstrChgEl = document.getElementById('mstr-change-badge');
-      mstrChgEl.textContent = `${mkt.mstr_change_pct >= 0 ? '+' : ''}${mkt.mstr_change_pct.toFixed(2)}%`;
-      mstrChgEl.className = `px-2 py-0.5 rounded text-xs font-mono font-semibold ${
-        mkt.mstr_change_pct >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-      }`;
-
-      const range52 = Math.max(1, mkt.mstr_52w_high - mkt.mstr_52w_low);
-      const pct52 = Math.min(100, Math.max(2, ((mkt.mstr_price - mkt.mstr_52w_low) / range52) * 100));
-      document.getElementById('mstr-52w-bar').style.width = `${pct52}%`;
-
-      // Hero Card 2: Composite Fair Value
-      document.getElementById('hero-composite-fv').textContent = fmtUSD(comp.fair_value);
-      document.getElementById('hero-trimmed-fv').textContent = fmtUSD(comp.trimmed_mean_fair_value);
-      document.getElementById('hero-p-to-fv').textContent = `${comp.price_to_fair_value.toFixed(2)}x`;
-
-      const upsideEl = document.getElementById('hero-upside-badge');
-      upsideEl.textContent = `${comp.upside_pct >= 0 ? '+' : ''}${comp.upside_pct.toFixed(1)}% ${comp.upside_pct >= 0 ? 'Upside' : 'Premi'}`;
-      upsideEl.className = `px-2 py-0.5 rounded text-xs font-mono font-bold ${
-        comp.upside_pct >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-      }`;
-
-      // Hero Card 3: BTC & Treasury
-      const tr = v.treasury;
-      document.getElementById('hero-btc-price').textContent = fmtUSD(mkt.btc_price, 0);
-      const btcChgEl = document.getElementById('btc-change-badge');
-      btcChgEl.textContent = `${mkt.btc_change_pct >= 0 ? '+' : ''}${mkt.btc_change_pct.toFixed(2)}%`;
-      btcChgEl.className = `px-2 py-0.5 rounded text-xs font-mono font-semibold ${
-        mkt.btc_change_pct >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-      }`;
-      document.getElementById('hero-btc-holdings').textContent = `${fmtNum(tr.btc_holdings)} BTC`;
-      document.getElementById('hero-btc-supply-pct').textContent = `${tr.btc_supply_pct.toFixed(2)}%`;
-      document.getElementById('hero-btc-treasury-val').textContent = `$${(tr.btc_treasury_value / 1e9).toFixed(2)}B`;
-
-      // Hero Card 4: mNAV
-      const mn = v.mnav_metrics;
-      document.getElementById('hero-basic-mnav').textContent = `${mn.current_basic_mnav.toFixed(2)}x`;
-      document.getElementById('hero-ev-mnav').textContent = `${mn.current_ev_mnav.toFixed(2)}x`;
-      document.getElementById('mnav-target-badge').textContent = `Target: ${mn.target_basic_mnav.toFixed(2)}x`;
-      document.getElementById('hero-sats-per-share').textContent = `${fmtNum(tr.sats_per_share)} sats`;
-
-      // Mini stats under bar chart
-      document.getElementById('stat-pure-nav').textContent = fmtUSD(tr.btc_nav_per_share_pure);
-      document.getElementById('stat-implied-btc').textContent = fmtUSD(tr.implied_btc_price_in_mstr, 0);
-      document.getElementById('stat-btc-per-1k').textContent = `${tr.btc_per_1000_shares.toFixed(3)} BTC`;
-
-      // Section 1: 7 Models Breakdown Table
-      const tbody = document.getElementById('models-table-body');
-      tbody.innerHTML = '';
-      v.models.forEach((m) => {
-        const isPos = m.upside_pct >= 0;
-        const trEl = document.createElement('tr');
-        trEl.className = 'hover:bg-slate-800/40 transition';
-        trEl.innerHTML = `
-          <td class="py-3 pr-3">
-            <div class="font-semibold text-white">${m.name}</div>
-            <div class="text-[11px] font-mono text-slate-400 mt-0.5">${m.formula}</div>
-          </td>
-          <td class="py-3 px-2 text-right font-mono font-bold text-white">${fmtUSD(m.fair_value)}</td>
-          <td class="py-3 px-2 text-right font-mono font-semibold ${isPos ? 'text-emerald-400' : 'text-rose-400'}">
-            ${isPos ? '+' : ''}${m.upside_pct.toFixed(1)}%
-          </td>
-          <td class="py-3 px-2 text-right font-mono text-slate-300">${m.weight_pct.toFixed(0)}%</td>
-          <td class="py-3 pl-2 text-right font-mono font-semibold text-orange-300">${fmtUSD(m.weighted_contribution)}</td>
-        `;
-        tbody.appendChild(trEl);
-      });
-
-      document.getElementById('tfoot-composite-fv').textContent = fmtUSD(comp.fair_value);
-      const tfUp = document.getElementById('tfoot-composite-upside');
-      tfUp.textContent = `${comp.upside_pct >= 0 ? '+' : ''}${comp.upside_pct.toFixed(1)}%`;
-      tfUp.className = `py-3 px-2 text-right ${comp.upside_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-      document.getElementById('tfoot-composite-contrib').textContent = fmtUSD(comp.fair_value);
-
-      // Render Charts
-      renderModelsBarChart(v);
-      renderHistoryCharts(v);
-      renderSensitivityMatrix(v);
-      renderBalanceSheetAndQuant(v);
-      renderHourlyLogs(logs);
-    }
-
-    function renderModelsBarChart(v) {
-      const ctx = document.getElementById('modelsBarChart').getContext('2d');
-      const labels = [
-        'Harga MSTR Saat Ini',
-        'Composite Fair Value',
-        ...v.models.map((m) => m.name.split('(')[0].trim()),
-      ];
-      const values = [
-        v.market.mstr_price,
-        v.composite.fair_value,
-        ...v.models.map((m) => m.fair_value),
-      ];
-      const bgColors = [
-        'rgba(244, 63, 94, 0.85)',
-        'rgba(249, 115, 22, 0.90)',
-        'rgba(56, 189, 248, 0.75)',
-        'rgba(16, 185, 129, 0.75)',
-        'rgba(168, 85, 247, 0.75)',
-        'rgba(234, 179, 8, 0.75)',
-        'rgba(99, 102, 241, 0.75)',
-        'rgba(20, 184, 166, 0.75)',
-        'rgba(148, 163, 184, 0.75)',
-      ];
-
-      if (modelsBarChartInstance) {
-        modelsBarChartInstance.destroy();
-      }
-
-      modelsBarChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Harga / Nilai Wajar ($ USD)',
-              data: values,
-              backgroundColor: bgColors,
-              borderRadius: 6,
-            },
-          ],
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (item) => ` $${Number(item.raw).toFixed(2)}`,
-              },
-            },
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(148, 163, 184, 0.1)' },
-              ticks: { color: '#94A3B8', callback: (val) => '$' + val },
-            },
-            y: {
-              grid: { display: false },
-              ticks: { color: '#E2E8F0', font: { size: 11 } },
-            },
-          },
-        },
-      });
-    }
-
-    function renderHistoryCharts(v) {
-      const hist = v.historical_90d || [];
-      const dates = hist.map((d) => d.date.slice(5));
-      const mstrPrices = hist.map((d) => d.mstr_price);
-      const compFvs = hist.map((d) => d.composite_fv);
-      const nav1x = hist.map((d) => d.nav_1x);
-      const mnavs = hist.map((d) => d.basic_mnav);
-
-      document.getElementById('label-avg-90d-mnav').textContent = `${v.mnav_metrics.avg_90d_mnav.toFixed(2)}x`;
-      document.getElementById('label-min-90d-mnav').textContent = `${v.mnav_metrics.min_90d_mnav.toFixed(2)}x`;
-      document.getElementById('label-max-90d-mnav').textContent = `${v.mnav_metrics.max_90d_mnav.toFixed(2)}x`;
-
-      const ctx1 = document.getElementById('historyPriceChart').getContext('2d');
-      if (historyPriceChartInstance) historyPriceChartInstance.destroy();
-      historyPriceChartInstance = new Chart(ctx1, {
-        type: 'line',
-        data: {
-          labels: dates,
-          datasets: [
-            {
-              label: 'Harga MSTR ($)',
-              data: mstrPrices,
-              borderColor: '#F43F5E',
-              backgroundColor: 'rgba(244, 63, 94, 0.1)',
-              borderWidth: 2.2,
-              pointRadius: 0,
-              tension: 0.25,
-            },
-            {
-              label: 'Composite Fair Value ($)',
-              data: compFvs,
-              borderColor: '#F97316',
-              borderDash: [5, 4],
-              borderWidth: 2,
-              pointRadius: 0,
-              tension: 0.25,
-            },
-            {
-              label: '1.0x BTC NAV Floor ($)',
-              data: nav1x,
-              borderColor: '#10B981',
-              backgroundColor: 'rgba(16, 185, 129, 0.08)',
-              fill: true,
-              borderWidth: 1.8,
-              pointRadius: 0,
-              tension: 0.25,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { labels: { color: '#CBD5E1', boxWidth: 12, font: { size: 11 } } },
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(148, 163, 184, 0.08)' },
-              ticks: { color: '#94A3B8', maxTicksLimit: 8 },
-            },
-            y: {
-              grid: { color: 'rgba(148, 163, 184, 0.1)' },
-              ticks: { color: '#94A3B8', callback: (val) => '$' + val },
-            },
-          },
-        },
-      });
-
-      const ctx2 = document.getElementById('historyMnavChart').getContext('2d');
-      if (historyMnavChartInstance) historyMnavChartInstance.destroy();
-      historyMnavChartInstance = new Chart(ctx2, {
-        type: 'line',
-        data: {
-          labels: dates,
-          datasets: [
-            {
-              label: 'Basic mNAV (x)',
-              data: mnavs,
-              borderColor: '#38BDF8',
-              backgroundColor: 'rgba(56, 189, 248, 0.12)',
-              fill: true,
-              borderWidth: 2.2,
-              pointRadius: 0,
-              tension: 0.25,
-            },
-            {
-              label: `Target mNAV (${v.mnav_metrics.target_basic_mnav.toFixed(2)}x)`,
-              data: dates.map(() => v.mnav_metrics.target_basic_mnav),
-              borderColor: '#F59E0B',
-              borderDash: [6, 4],
-              borderWidth: 1.8,
-              pointRadius: 0,
-            },
-            {
-              label: '1.0x Parity Floor',
-              data: dates.map(() => 1.0),
-              borderColor: '#10B981',
-              borderDash: [3, 3],
-              borderWidth: 1.4,
-              pointRadius: 0,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { labels: { color: '#CBD5E1', boxWidth: 12, font: { size: 11 } } },
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(148, 163, 184, 0.08)' },
-              ticks: { color: '#94A3B8', maxTicksLimit: 8 },
-            },
-            y: {
-              grid: { color: 'rgba(148, 163, 184, 0.1)' },
-              ticks: { color: '#94A3B8', callback: (val) => val.toFixed(2) + 'x' },
-            },
-          },
-        },
-      });
-    }
-
-    function renderSensitivityMatrix(v) {
-      const sens = v.sensitivity;
-      const thead = document.getElementById('sensitivity-thead');
-      const tbody = document.getElementById('sensitivity-tbody');
-
-      let headHtml = '<tr class="border-b border-slate-800 bg-slate-900/90 text-slate-300"><th class="py-2.5 px-3 text-left">Skenario Harga BTC \\ mNAV</th>';
-      sens.mnav_headers.forEach((m) => {
-        const isTarget = Math.abs(m - v.mnav_metrics.target_basic_mnav) < 0.01;
-        headHtml += `<th class="py-2.5 px-3 ${isTarget ? 'text-orange-400 font-extrabold bg-orange-500/10' : ''}">${m.toFixed(2)}x ${isTarget ? '★' : ''}</th>`;
-      });
-      headHtml += '</tr>';
-      thead.innerHTML = headHtml;
-
-      tbody.innerHTML = '';
-      sens.rows.forEach((row) => {
-        const trEl = document.createElement('tr');
-        trEl.className = row.is_current_btc ? 'bg-amber-500/10 font-bold' : 'hover:bg-slate-900/40';
-        let cellsHtml = `<td class="py-2.5 px-3 text-left font-bold ${row.is_current_btc ? 'text-amber-400' : 'text-slate-200'}">
-          ${fmtUSD(row.btc_price, 0)} ${row.is_current_btc ? '(Saat Ini)' : ''}
-        </td>`;
-
-        row.cells.forEach((c) => {
-          const isUp = c.upside_pct >= 0;
-          const bgClass = isUp ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300';
-          cellsHtml += `<td class="py-2 px-2 ${bgClass} border border-slate-900/50">
-            <div class="font-bold text-white">${fmtUSD(c.implied_price, 0)}</div>
-            <div class="text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}">${isUp ? '+' : ''}${c.upside_pct.toFixed(0)}%</div>
-          </td>`;
-        });
-
-        trEl.innerHTML = cellsHtml;
-        tbody.appendChild(trEl);
-      });
-    }
-
-    function renderBalanceSheetAndQuant(v) {
-      const bs = v.balance_sheet;
-      const tr = v.treasury;
-      const qt = v.quant_and_technicals;
-
-      document.getElementById('bs-mcap-basic').textContent = `$${(bs.market_cap_basic / 1e9).toFixed(2)}B`;
-      document.getElementById('bs-ev').textContent = `$${(bs.enterprise_value / 1e9).toFixed(2)}B`;
-      document.getElementById('bs-basic-shares').textContent = `${(bs.basic_shares / 1e6).toFixed(2)} Juta`;
-      document.getElementById('bs-diluted-shares').textContent = `${(bs.diluted_shares / 1e6).toFixed(2)} Juta`;
-      document.getElementById('bs-total-debt').textContent = `$${(bs.total_debt / 1e9).toFixed(2)}B`;
-      document.getElementById('bs-debt-ratio').textContent = `${bs.debt_to_btc_nav_pct.toFixed(1)}%`;
-      document.getElementById('bs-btc-avg-cost').textContent = fmtUSD(tr.btc_avg_cost, 0);
-
-      const pnlEl = document.getElementById('bs-btc-pnl');
-      const pnlBillions = tr.btc_unrealized_pnl / 1e9;
-      pnlEl.textContent = `${pnlBillions >= 0 ? '+' : ''}$${pnlBillions.toFixed(2)}B (${tr.btc_unrealized_pnl_pct >= 0 ? '+' : ''}${tr.btc_unrealized_pnl_pct.toFixed(1)}%)`;
-      pnlEl.className = `font-mono font-bold text-sm ${pnlBillions >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-
-      document.getElementById('qt-r2').textContent = `${qt.ols_r_squared.toFixed(3)} (r=${qt.ols_correlation.toFixed(2)})`;
-      document.getElementById('qt-zscore').textContent = `${qt.ols_z_score >= 0 ? '+' : ''}${qt.ols_z_score.toFixed(2)}σ`;
-      document.getElementById('qt-rsi').textContent = `${qt.rsi_14.toFixed(1)}`;
-      document.getElementById('qt-sma').textContent = `$${qt.sma_50.toFixed(0)} / $${qt.sma_200.toFixed(0)}`;
-      document.getElementById('qt-mstr-vol').textContent = `${qt.mstr_vol_30d_pct.toFixed(1)}%`;
-      document.getElementById('qt-vol-mult').textContent = `${qt.vol_multiplier.toFixed(2)}x BTC`;
-    }
-
-    function renderHourlyLogs(logs) {
-      document.getElementById('snapshot-count-badge').textContent = `${logs.length} Snapshot Tersimpan`;
-      const tbody = document.getElementById('hourly-logs-tbody');
-      tbody.innerHTML = '';
-      const reversed = [...logs].reverse();
-      reversed.forEach((item) => {
-        const isPos = item.upside_pct >= 0;
-        const trEl = document.createElement('tr');
-        trEl.className = 'hover:bg-slate-800/40';
-        trEl.innerHTML = `
-          <td class="py-2.5 px-3 text-slate-300">${fmtWIB(item.timestamp_utc)}</td>
-          <td class="py-2.5 px-2 text-right font-bold text-white">${fmtUSD(item.mstr_price)}</td>
-          <td class="py-2.5 px-2 text-right text-amber-400">${fmtUSD(item.btc_price, 0)}</td>
-          <td class="py-2.5 px-2 text-right font-bold text-orange-400">${fmtUSD(item.composite_fair_value)}</td>
-          <td class="py-2.5 px-2 text-right font-semibold ${isPos ? 'text-emerald-400' : 'text-rose-400'}">
-            ${isPos ? '+' : ''}${Number(item.upside_pct).toFixed(1)}%
-          </td>
-          <td class="py-2.5 px-2 text-right text-sky-400">${Number(item.current_basic_mnav).toFixed(2)}x</td>
-          <td class="py-2.5 px-3 text-center">
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-200">${item.verdict}</span>
-          </td>
-        `;
-        tbody.appendChild(trEl);
-      });
-    }
-
-    function openSettingsModal() {
-      if (!latestState || !latestState.valuation) return;
-      const cfg = latestState.valuation.config;
-      document.getElementById('cfg-btc-holdings').value = cfg.btc_holdings;
-      document.getElementById('cfg-btc-avg-cost').value = cfg.btc_avg_cost;
-      document.getElementById('cfg-target-basic-mnav').value = cfg.target_basic_mnav;
-      document.getElementById('cfg-target-ev-mnav').value = cfg.target_ev_mnav;
-      document.getElementById('cfg-btc-yield').value = cfg.annual_btc_yield_pct;
-      document.getElementById('cfg-refresh-interval').value = cfg.refresh_interval_seconds;
-
-      const w = cfg.weights || {};
-      document.getElementById('w-target-mnav').value = w.target_mnav ?? 22;
-      document.getElementById('w-ev-adjusted-mnav').value = w.ev_adjusted_mnav ?? 20;
-      document.getElementById('w-btc-yield-dcf').value = w.btc_yield_dcf ?? 18;
-      document.getElementById('w-ols-regression').value = w.ols_regression ?? 15;
-      document.getElementById('w-analyst-consensus').value = w.analyst_consensus ?? 10;
-      document.getElementById('w-balance-sheet-mtm').value = w.balance_sheet_mtm ?? 10;
-      document.getElementById('w-basic-nav-floor').value = w.basic_nav_floor ?? 5;
-
-      document.getElementById('settings-modal').classList.remove('hidden');
-    }
-
-    function closeSettingsModal() {
-      document.getElementById('settings-modal').classList.add('hidden');
-    }
-
-    async function saveSettings(e) {
-      e.preventDefault();
-      const payload = {
-        btc_holdings: parseFloat(document.getElementById('cfg-btc-holdings').value),
-        btc_avg_cost: parseFloat(document.getElementById('cfg-btc-avg-cost').value),
-        target_basic_mnav: parseFloat(document.getElementById('cfg-target-basic-mnav').value),
-        target_ev_mnav: parseFloat(document.getElementById('cfg-target-ev-mnav').value),
-        annual_btc_yield_pct: parseFloat(document.getElementById('cfg-btc-yield').value),
-        refresh_interval_seconds: parseInt(document.getElementById('cfg-refresh-interval').value, 10),
-        weights: {
-          target_mnav: parseFloat(document.getElementById('w-target-mnav').value),
-          ev_adjusted_mnav: parseFloat(document.getElementById('w-ev-adjusted-mnav').value),
-          btc_yield_dcf: parseFloat(document.getElementById('w-btc-yield-dcf').value),
-          ols_regression: parseFloat(document.getElementById('w-ols-regression').value),
-          analyst_consensus: parseFloat(document.getElementById('w-analyst-consensus').value),
-          balance_sheet_mtm: parseFloat(document.getElementById('w-balance-sheet-mtm').value),
-          basic_nav_floor: parseFloat(document.getElementById('w-basic-nav-floor').value),
-        },
-      };
-
-      try {
-        const res = await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        latestState = data;
-        renderDashboard(data);
-        closeSettingsModal();
-      } catch (err) {
-        alert('Gagal menyimpan pengaturan: ' + err.message);
-      }
-    }
-
-    async function resetSettingsToDefault() {
-      if (!confirm('Reset semua parameter & bobot model ke pengaturan awal?')) return;
-      try {
-        const res = await fetch('/api/config/reset', { method: 'POST' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        latestState = data;
-        renderDashboard(data);
-        closeSettingsModal();
-      } catch (err) {
-        alert('Gagal mereset pengaturan: ' + err.message);
-      }
-    }
-
-    // Initial load + periodic frontend sync every 60s
-    fetchValuationData();
-    setInterval(fetchValuationData, 60000);
-  </script>
-</body>
+    </dialog>
+  </body>
 </html>
